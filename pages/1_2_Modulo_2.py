@@ -375,6 +375,55 @@ else:
             st.pyplot(step_figure)
             plt.close(step_figure)
 
+            if model_order == 1:
+                estimated_i, estimated_j = model_coefficients
+                dc_denominator = 1 - estimated_i
+                dc_numerator = estimated_j
+            else:
+                estimated_i1, estimated_i2, estimated_j1, estimated_j2 = model_coefficients
+                dc_denominator = 1 - estimated_i1 - estimated_i2
+                dc_numerator = estimated_j1 + estimated_j2
+
+            is_open_loop_stable = bool(np.all(np.abs(poles) < 1))
+            if is_open_loop_stable and not np.isclose(dc_denominator, 0):
+                steady_state = dc_numerator / dc_denominator
+                if model_order == 1:
+                    dc_gain_expression = (
+                        rf"G(1)=\frac{{{estimated_j:.6g}}}"
+                        rf"{{1-({estimated_i:.6g})}}"
+                    )
+                    transient_description = (
+                        "La respuesta se aproxima asintóticamente a este valor; "
+                        "en cinco periodos alcanza aproximadamente el 98.9 %."
+                    )
+                else:
+                    dc_gain_expression = (
+                        rf"G(1)=\frac{{{estimated_j1:.6g}+({estimated_j2:.6g})}}"
+                        rf"{{1-({estimated_i1:.6g})-({estimated_i2:.6g})}}"
+                    )
+                    transient_description = (
+                        "La respuesta discreta presenta un transitorio y converge "
+                        "asintóticamente a este valor."
+                    )
+
+                st.info(
+                    rf"💡 **Interpretación del Estado Estable:** Para un escalón "
+                    rf"unitario, el Teorema del Valor Final da "
+                    rf"$y_{{ss}}={dc_gain_expression}="
+                    rf"\frac{{{dc_numerator:.6g}}}{{{dc_denominator:.6g}}}"
+                    rf"\approx {steady_state:.6g}$. "
+                    f"{transient_description} "
+                    rf"El modelo es estable en lazo abierto porque sus polos "
+                    rf"están dentro del círculo unitario ($|z_p|<1$)."
+                )
+            else:
+                st.info(
+                    "💡 **Interpretación del Estado Estable:** El Teorema del "
+                    "Valor Final no permite afirmar un valor final finito para "
+                    "este modelo, porque el lazo abierto no es estable o su "
+                    "ganancia en continua no está definida."
+                )
+
     with tabs[2]:
         st.markdown(
             r"""
@@ -390,10 +439,10 @@ else:
         else:
             proportional_gain = st.slider(
                 "Ganancia K",
-                min_value=0.0,
+                min_value=-1.0,
                 max_value=5.0,
                 value=1.0,
-                step=0.1,
+                step=0.05,
                 key="evidence_2_gain",
             )
             if model_order == 1:
@@ -467,8 +516,8 @@ else:
                 )
             else:
                 st.error(
-                    "El polo no queda estrictamente dentro del círculo unitario; "
-                    "ajusta K para cumplir $|z_{cl}|<1$."
+                    "Inestable: el polo no queda estrictamente dentro del círculo "
+                    "unitario; ajusta K para cumplir $|z_{cl}|<1$."
                 )
 
             plot_column, response_column = st.columns(2)
