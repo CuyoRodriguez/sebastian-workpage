@@ -9,24 +9,31 @@ import streamlit as st
 
 st.set_page_config(page_title="Recomendación Musical", layout="wide")
 
+CATALOG_COLUMNS = ["Track name", "Artist name", "Album", "Genre_Group"]
+TOP_RECOMMENDATIONS_LIMIT = 10
+
 
 @st.cache_data
 def load_music_library(
     csv_path: str,
     modified_time_ns: int,
 ) -> pd.DataFrame:
-    library = pd.read_csv(csv_path, encoding="utf-8-sig")
-    required_columns = {"Track name", "Artist name", "Playlist name"}
-    missing_columns = required_columns.difference(library.columns)
+    header = pd.read_csv(csv_path, encoding="utf-8-sig", nrows=0)
+    missing_columns = set(CATALOG_COLUMNS).difference(header.columns)
     if missing_columns:
         missing = ", ".join(sorted(missing_columns))
-        raise ValueError(f"Faltan columnas requeridas en el CSV: {missing}.")
+        raise ValueError(f"Faltan columnas requeridas en el catálogo: {missing}.")
+    library = pd.read_csv(
+        csv_path,
+        encoding="utf-8-sig",
+        usecols=CATALOG_COLUMNS,
+    )
     library["Artist name"] = library["Artist name"].map(canonicalize_artist)
     library.drop_duplicates(
         subset=["Track name", "Artist name"],
         inplace=True,
     )
-    return library
+    return library[CATALOG_COLUMNS].reset_index(drop=True)
 
 
 def normalize_text(value: object) -> str:
@@ -48,103 +55,26 @@ def canonicalize_artist(artist_name: object) -> object:
     return artist_name
 
 
-def classify_genre_group(artist_name: object, playlist_name: object) -> str:
-    artist = normalize_text(artist_name)
-    playlist = normalize_text(playlist_name)
-
-    if any(
-        name in artist
-        for name in (
-            "the strokes",
-            "cage the elephant",
-            "radiohead",
-            "foster the people",
-            "arctic monkeys",
-            "interpol",
-            "declan mckenna",
+def render_top_recommendations(title: str, tracks: pd.DataFrame) -> None:
+    recommendations = (
+        tracks.sort_values(
+            ["Artist name", "Track name"],
+            key=lambda column: column.fillna("").astype(str).str.casefold(),
         )
-    ) or any(term in playlist for term in ("alternative", "rock alternativo")):
-        return "🎸 Música Alternativa"
-
-    if any(
-        name in artist
-        for name in (
-            "gorillaz",
-            "inner wave",
-            "everything everything",
-            "saint motel",
-            "l'imperatrice",
-            "peach pit",
-            "daft punk",
-            "temples",
-            "mgmt",
-            "metronomy",
-            "crumb",
-            "tame impala",
-            "the buttertones",
-        )
-    ):
-        return "✨ Indie, Synth & Psicodelia"
-
-    if any(
-        name in artist
-        for name in (
-            "will wood",
-            "fish in a birdcage",
-            "jack stauber",
-            "tally hall",
-            "idkhow",
-            "lemon demon",
-        )
-    ):
-        return "🎭 Experimental & Avant-Garde"
-
-    if any(
-        name in artist
-        for name in ("c418", "epic mountain", "lorien testard", "waveshaper")
-    ) or any(
-        term in playlist
-        for term in (
-            "orchestra",
-            "orchestral",
-            "orquesta",
-            "piano",
-            "classical",
-            "clasica",
-            "minecraft",
-            "kurzgesagt",
-            "fromsoftware",
-            "from software",
-        )
-    ):
-        return "🎻 Instrumental, BSO & Ambient"
-
-    if any(
-        name in artist
-        for name in (
-            "avenged sevenfold",
-            "rammstein",
-            "muse",
-            "rush",
-            "slipknot",
-            "system of a down",
-        )
-    ) or any(term in playlist for term in ("metal", "a7x", "guitar hero")):
-        return "🔥 Rock & Heavy Metal"
-
-    return "🎧 Pop, Variados & Otros"
-
-
-def add_genre_group(library: pd.DataFrame) -> pd.DataFrame:
-    classified = library.copy()
-    classified["Genre_Group"] = classified.apply(
-        lambda track: classify_genre_group(
-            track["Artist name"],
-            track["Playlist name"],
-        ),
-        axis=1,
+        .head(TOP_RECOMMENDATIONS_LIMIT)
+        .reset_index(drop=True)
     )
-    return classified
+    st.markdown(
+        f'<div class="music-card"><h3>Top {len(recommendations)}: {title}</h3>'
+        "<p>Selección del catálogo, ordenada alfabéticamente porque no incluye datos de popularidad.</p></div>",
+        unsafe_allow_html=True,
+    )
+    with st.container(border=True):
+        st.dataframe(
+            recommendations[CATALOG_COLUMNS],
+            hide_index=True,
+            use_container_width=True,
+        )
 
 
 def select_music_genre(genre: str) -> None:
@@ -408,24 +338,30 @@ with st.sidebar:
             args=(genre["clave"],),
         )
 
-csv_path = Path(__file__).resolve().parent.parent / "My Apple Music Library.csv"
-classified_library: pd.DataFrame | None = None
+project_root = Path(__file__).resolve().parent.parent
+catalog_candidates = [
+    project_root / "data" / "curated_music.csv",
+    project_root / "curated_music.csv",
+]
+csv_path = next(
+    (candidate for candidate in catalog_candidates if candidate.is_file()),
+    catalog_candidates[0],
+)
+music_catalog: pd.DataFrame | None = None
 
 try:
     modified_time_ns = csv_path.stat().st_mtime_ns
-    library = load_music_library(
+    music_catalog = load_music_library(
         str(csv_path),
         modified_time_ns,
     )
 except FileNotFoundError:
     st.error(
-        f"No se encontró **{csv_path.name}** en la raíz del proyecto: "
-        f"`{csv_path.parent}`."
+        "No se encontró **curated_music.csv**. Colócalo en "
+        f"`{catalog_candidates[0].parent}` o en `{project_root}`."
     )
 except (OSError, UnicodeDecodeError, pd.errors.ParserError, ValueError) as error:
-    st.error(f"No se pudo cargar la biblioteca musical: {error}")
-else:
-    classified_library = add_genre_group(library)
+    st.error(f"No se pudo cargar el catálogo musical: {error}")
 
 recommendation_tab, artist_tab = st.tabs(["🎧 Géneros", "🎤 Artistas"])
 
@@ -445,8 +381,8 @@ with recommendation_tab:
                     args=(genre["clave"],),
                 )
 
-    if classified_library is None:
-        st.info("Agrega el CSV de tu biblioteca a la raíz del proyecto para ver canciones.")
+    if music_catalog is None:
+        st.info("Agrega curated_music.csv para ver las recomendaciones.")
     else:
         selected_genre = st.session_state.music_genre_filter
         if selected_genre is None:
@@ -456,36 +392,24 @@ with recommendation_tab:
                 genre for genre in generos_config
                 if genre["clave"] == selected_genre
             )
-            visible_library = classified_library[
-                classified_library["Genre_Group"] == selected_config["grupo"]
+            visible_library = music_catalog[
+                music_catalog["Genre_Group"] == selected_config["grupo"]
             ]
-            st.markdown(
-                f'<div class="music-card"><h3>{selected_config["nombre"]}</h3>'
-                f"<p>{len(visible_library):,} canciones deduplicadas en esta selección.</p></div>",
-                unsafe_allow_html=True,
-            )
-            with st.container(border=True):
-                st.dataframe(
-                    visible_library[
-                        [
-                            "Track name",
-                            "Artist name",
-                            "Album",
-                            "Genre_Group",
-                            "Playlist name",
-                        ]
-                    ],
-                    hide_index=True,
-                    use_container_width=True,
+            if visible_library.empty:
+                st.info(f"No hay canciones en la categoría {selected_config['nombre']}.")
+            else:
+                render_top_recommendations(
+                    selected_config["nombre"],
+                    visible_library,
                 )
 
 with artist_tab:
-    if classified_library is None:
+    if music_catalog is None:
         st.markdown(
             """
             <div class="music-card">
               <h3>Datos de artistas</h3>
-              <p>El resumen estará disponible cuando el CSV de la biblioteca se encuentre en la raíz del proyecto.</p>
+              <p>El resumen estará disponible cuando el catálogo curado esté en data/curated_music.csv o en la raíz del proyecto.</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -512,8 +436,8 @@ with artist_tab:
         artistas_excluidos_normalizados = {
             normalize_text(artist) for artist in artistas_excluidos
         }
-        filtered_library = classified_library[
-            ~classified_library["Artist name"].map(
+        filtered_library = music_catalog[
+            ~music_catalog["Artist name"].map(
                 lambda artist: normalize_text(artist)
                 in artistas_excluidos_normalizados
             )
@@ -566,25 +490,7 @@ with artist_tab:
             artist_tracks = filtered_library[
                 filtered_library["Artist name"] == selected_artist
             ]
-            st.markdown(
-                f'<div class="music-card"><h3>{selected_artist}</h3>'
-                f"<p>{len(artist_tracks):,} canciones de este artista.</p></div>",
-                unsafe_allow_html=True,
-            )
-            with st.container(border=True):
-                st.dataframe(
-                    artist_tracks[
-                        [
-                            "Track name",
-                            "Artist name",
-                            "Album",
-                            "Genre_Group",
-                            "Playlist name",
-                        ]
-                    ],
-                    hide_index=True,
-                    use_container_width=True,
-                )
+            render_top_recommendations(selected_artist, artist_tracks)
 
 if st.button("⬅️ Página Central", type="primary"):
     st.switch_page("app.py")
