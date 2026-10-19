@@ -358,22 +358,23 @@ else:
     with tabs[2]:
         st.markdown(
             r"""
-            Para realimentación unitaria negativa
-            $x[n]=K_p(r[n]-y[n])$, los polos de lazo cerrado se calculan con
-            el denominador $1+K_pG(z)$. El sistema discreto es estable si todos
-            los polos quedan estrictamente dentro del círculo unitario.
+            Para realimentación unitaria negativa, la estabilidad discreta se
+            determina ubicando los polos de lazo cerrado dentro del círculo unitario.
             """
         )
+        st.latex(r'G_{cl}(z) = \frac{K \cdot G(z)}{1 + K \cdot G(z)}')
         if model_coefficients is None:
             st.warning(
                 "Corrige los datos en la primera pestaña para analizar la estabilidad."
             )
         else:
-            proportional_gain = st.number_input(
-                "Ganancia proporcional Kₚ",
+            proportional_gain = st.slider(
+                "Ganancia K",
+                min_value=0.0,
+                max_value=5.0,
                 value=1.0,
                 step=0.1,
-                key="evidence_2_kp",
+                key="evidence_2_gain",
             )
             if model_order == 1:
                 estimated_i, estimated_j = model_coefficients
@@ -385,15 +386,25 @@ else:
                     )
                     closed_loop_poles = np.array([np.inf])
                     closed_loop_numerator = ""
+                    closed_loop_tf_numerator = [0]
+                    closed_loop_tf_denominator = [1]
                 else:
                     closed_loop_poles = np.array(
                         [estimated_i / closed_loop_denominator]
                     )
                     closed_loop_numerator = (
-                        rf"\frac{{K_p\hat{{j}}z}}{{(1+K_p\hat{{j}})z-\hat{{i}}}}"
+                        rf"\frac{{K\hat{{j}}z}}{{(1+K\hat{{j}})z-\hat{{i}}}}"
                         rf"=\frac{{{proportional_gain:.5g}({estimated_j:.5g})z}}"
                         rf"{{({closed_loop_denominator:.5g})z-({estimated_i:.5g})}}"
                     )
+                    closed_loop_tf_numerator = [
+                        proportional_gain * estimated_j,
+                        0,
+                    ]
+                    closed_loop_tf_denominator = [
+                        closed_loop_denominator,
+                        -estimated_i,
+                    ]
             else:
                 estimated_i1, estimated_i2, estimated_j1, estimated_j2 = model_coefficients
                 closed_loop_poles = np.roots(
@@ -404,14 +415,23 @@ else:
                     ]
                 )
                 closed_loop_numerator = (
-                    rf"\frac{{K_p(\hat{{j}}_1z+\hat{{j}}_2)}}"
-                    rf"{{z^2+(K_p\hat{{j}}_1-\hat{{i}}_1)z"
-                    rf"+(K_p\hat{{j}}_2-\hat{{i}}_2)}}"
+                    rf"\frac{{K(\hat{{j}}_1z+\hat{{j}}_2)}}"
+                    rf"{{z^2+(K\hat{{j}}_1-\hat{{i}}_1)z"
+                    rf"+(K\hat{{j}}_2-\hat{{i}}_2)}}"
                     rf"=\frac{{{proportional_gain:.5g}"
                     rf"(({estimated_j1:.5g})z+({estimated_j2:.5g}))}}"
                     rf"{{z^2+({proportional_gain * estimated_j1 - estimated_i1:.5g})z"
                     rf"+({proportional_gain * estimated_j2 - estimated_i2:.5g})}}"
                 )
+                closed_loop_tf_numerator = [
+                    proportional_gain * estimated_j1,
+                    proportional_gain * estimated_j2,
+                ]
+                closed_loop_tf_denominator = [
+                    1,
+                    proportional_gain * estimated_j1 - estimated_i1,
+                    proportional_gain * estimated_j2 - estimated_i2,
+                ]
             is_stable = bool(np.all(np.abs(closed_loop_poles) < 1))
             st.latex(r"\hat{T}(z)=" + closed_loop_numerator)
             poles_text = ", ".join(f"{pole:.5g}" for pole in closed_loop_poles)
@@ -428,8 +448,94 @@ else:
             else:
                 st.error(
                     "El polo no queda estrictamente dentro del círculo unitario; "
-                    "ajusta Kₚ para cumplir $|z_{cl}|<1$."
+                    "ajusta K para cumplir $|z_{cl}|<1$."
                 )
+
+            plot_column, response_column = st.columns(2)
+            with plot_column:
+                unit_circle = np.exp(1j * np.linspace(0, 2 * np.pi, 400))
+                pole_figure, pole_axis = plt.subplots(figsize=(6, 5))
+                pole_axis.plot(
+                    unit_circle.real,
+                    unit_circle.imag,
+                    color="#2463a6",
+                    linestyle="--",
+                    label="Círculo unitario",
+                )
+                for pole in closed_loop_poles:
+                    pole_is_stable = bool(np.isfinite(pole) and abs(pole) < 1)
+                    pole_axis.scatter(
+                        np.real(pole),
+                        np.imag(pole),
+                        color="#218838" if pole_is_stable else "#dc3545",
+                        marker="x",
+                        s=90,
+                        linewidths=2.5,
+                        label=(
+                            "Polo estable"
+                            if pole_is_stable
+                            else "Polo inestable o marginal"
+                        ),
+                    )
+                pole_axis.axhline(0, color="black", linewidth=0.8, alpha=0.6)
+                pole_axis.axvline(0, color="black", linewidth=0.8, alpha=0.6)
+                pole_axis.set(
+                    title="Polos de lazo cerrado en el plano Z",
+                    xlabel="Parte real",
+                    ylabel="Parte imaginaria",
+                    aspect="equal",
+                )
+                pole_axis.grid(True, alpha=0.3)
+                pole_axis.legend()
+                pole_figure.tight_layout()
+                st.pyplot(pole_figure)
+                plt.close(pole_figure)
+
+            with response_column:
+                if np.allclose(closed_loop_tf_numerator, 0):
+                    closed_loop_time = np.arange(30)
+                    closed_loop_response = (np.zeros(30),)
+                else:
+                    try:
+                        closed_loop_time, closed_loop_response = signal.dstep(
+                            (
+                                closed_loop_tf_numerator,
+                                closed_loop_tf_denominator,
+                                1,
+                            ),
+                            n=30,
+                        )
+                    except (ValueError, np.linalg.LinAlgError) as error:
+                        st.error(
+                            "No fue posible simular el escalón en lazo cerrado: "
+                            f"{error}"
+                        )
+                        closed_loop_time = np.array([])
+                        closed_loop_response = (np.array([]),)
+
+                if closed_loop_time.size:
+                    response_figure, response_axis = plt.subplots(figsize=(6, 5))
+                    markerline, stemlines, baseline = response_axis.stem(
+                        np.asarray(closed_loop_time).reshape(-1),
+                        np.asarray(closed_loop_response[0]).reshape(-1),
+                        linefmt="#2463a6",
+                        markerfmt="o",
+                        basefmt="k-",
+                        label="Salida y[n]",
+                    )
+                    plt.setp(markerline, markersize=4, markerfacecolor="#2463a6")
+                    plt.setp(stemlines, linewidth=1.3, alpha=0.8)
+                    plt.setp(baseline, linewidth=0.8, alpha=0.6)
+                    response_axis.set(
+                        title="Respuesta al escalón unitario en lazo cerrado",
+                        xlabel="Muestra n",
+                        ylabel="Salida y[n]",
+                    )
+                    response_axis.grid(True, alpha=0.3)
+                    response_axis.legend()
+                    response_figure.tight_layout()
+                    st.pyplot(response_figure)
+                    plt.close(response_figure)
 
     with tabs[3]:
         st.markdown(
