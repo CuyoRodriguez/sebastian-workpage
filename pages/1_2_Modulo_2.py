@@ -539,19 +539,41 @@ else:
                     plt.close(response_figure)
 
     with tabs[3]:
+        st.subheader("📝 Conclusión y Reflexión de Aprendizaje")
+        st.success(
+            "La evidencia integra identificación de sistemas, Transformada Z y "
+            "análisis de estabilidad en tiempo discreto."
+        )
+        st.markdown(
+            r"""
+            Esta evidencia se desarrolló en su mayoría a base de código en Python.
+            En esta plataforma se trabajó con un conjunto de datos de un evento
+            representado en etapas discretas, identificando una variable de entrada
+            inyectada ($x[n]$) y una variable de salida a predecir ($y[n]$).
+
+            Al no contar con la ecuación física exacta del sistema, se aplicó la
+            técnica de **Mínimos Cuadrados Ordinarios (OLS)** para analizar los datos
+            y encontrar los coeficientes óptimos de la ecuación de diferencias.
+
+            Posteriormente, se transformó la ecuación de diferencias del dominio del
+            tiempo discreto al plano $Z$ mediante la **Transformada Z**, obteniendo
+            la **Función de Transferencia $G(z)$**. Esto permitió calcular la
+            ubicación de los polos y ceros del sistema en lazo abierto.
+
+            Finalmente, se incorporó una retroalimentación con un **controlador de
+            ganancia $K$**. Al variar el parámetro $K$, se observó cómo se desplazan
+            los polos dentro del plano complejo $Z$, permitiendo evaluar la
+            estabilidad del sistema discreto mediante el criterio
+            $|z_p| < 1$.
+            """
+        )
+        st.markdown("### Conclusiones del análisis")
         st.markdown(
             """
-            ### Conclusiones
-
-            - Los parámetros del modelo se estiman minimizando el error cuadrático
-              entre la salida medida y la predicha.
-            - El modelo identificado permite obtener una función de transferencia
-              discreta y relacionar la ganancia proporcional con la ubicación del polo.
-            - La estabilidad depende de que el polo de lazo cerrado permanezca
-              estrictamente dentro del círculo unitario.
-            - Los resultados dependen de la calidad, excitación y longitud de los
-              datos, así como de que el modelo de primer orden con retardo represente
-              adecuadamente al proceso.
+            - La calidad de la estimación depende de los datos y de que la estructura
+              elegida represente adecuadamente el proceso.
+            - La estabilidad en tiempo discreto requiere que todos los polos de lazo
+              cerrado permanezcan estrictamente dentro del círculo unitario.
             """
         )
         st.markdown("### Rúbrica de autoevaluación")
