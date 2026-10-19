@@ -116,7 +116,88 @@ if st.session_state.module_2_selected_deliverable == "Actividad 10":
             )
 
     with tabs[1]:
-        st.info("La comparación gráfica de las funciones discretizadas está en desarrollo.")
+        continuous_system = signal.TransferFunction(
+            [1, 0.3, 0],
+            [1, 0.5, -0.14],
+        )
+        discrete_systems = [
+            (
+                "Mapeo de Polos y Ceros",
+                signal.TransferFunction(
+                    [1, -1.7408, 0.7408],
+                    [1, -1.7180, 0.6065],
+                    dt=1.0,
+                ),
+                "red",
+                "s",
+            ),
+            (
+                "Retenedor de Orden Cero (ZOH)",
+                signal.TransferFunction(
+                    [1, -1.8187, 0.8187],
+                    [1, -1.7180, 0.6065],
+                    dt=1.0,
+                ),
+                "blue",
+                "^",
+            ),
+            (
+                "Transformación Tustin",
+                signal.TransferFunction(
+                    [4.6, -8, 3.4],
+                    [4.86, -8.28, 2.86],
+                    dt=1.0,
+                ),
+                "green",
+                "D",
+            ),
+        ]
+
+        continuous_time = np.linspace(0, 15, 601)
+        continuous_time, continuous_response = signal.step(
+            continuous_system,
+            T=continuous_time,
+        )
+        figure, axis = plt.subplots(figsize=(10, 5.5))
+        axis.plot(
+            continuous_time,
+            continuous_response,
+            color="black",
+            linewidth=2,
+            label="G(s) continua",
+        )
+
+        for label, system, color, marker in discrete_systems:
+            discrete_time, discrete_response = signal.dstep(system, n=16)
+            markerline, stemlines, baseline = axis.stem(
+                np.asarray(discrete_time).reshape(-1),
+                np.asarray(discrete_response[0]).reshape(-1),
+                linefmt="-",
+                markerfmt=marker,
+                basefmt="k-",
+                label=label,
+            )
+            plt.setp(
+                markerline,
+                color=color,
+                markerfacecolor=color,
+                markeredgecolor=color,
+                markersize=6,
+            )
+            plt.setp(stemlines, color=color, linewidth=1.4, alpha=0.85)
+            plt.setp(baseline, linewidth=0.8, alpha=0.6)
+
+        axis.set(
+            title="Comparación de respuestas al escalón",
+            xlabel="Tiempo (s) / Muestra n",
+            ylabel="Respuesta y",
+            xlim=(0, 15),
+        )
+        axis.grid(True, alpha=0.3)
+        axis.legend(loc="lower right")
+        figure.tight_layout()
+        st.pyplot(figure)
+        plt.close(figure)
 
     with tabs[2]:
         st.info("El análisis de resultados de la Actividad 10 está en desarrollo.")
