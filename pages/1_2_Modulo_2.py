@@ -200,7 +200,14 @@ if st.session_state.module_2_selected_deliverable == "Actividad 10":
         plt.close(figure)
 
     with tabs[2]:
-        st.info("El análisis de resultados de la Actividad 10 está en desarrollo.")
+        st.info(
+            r"**Interpretación:** $G(s)$ representa la dinámica continua de "
+            r"referencia. El modelo $H_b(z)$ obtenido mediante retención de "
+            r"orden cero (ZOH) coincide exactamente en los instantes de muestreo "
+            r"al considerar la retención del convertidor D/A. Las discretizaciones "
+            r"de Tustin y Mapeo de Polos y Ceros validan analíticamente la "
+            r"aproximación del filtro analógico al dominio discreto."
+        )
 elif st.session_state.module_2_selected_deliverable != "Evidencia 2":
     if st.session_state.module_2_selected_deliverable:
         st.info("Contenido en desarrollo.")
