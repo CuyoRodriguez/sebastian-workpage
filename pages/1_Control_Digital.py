@@ -1,8 +1,5 @@
 from pathlib import Path
 
-import control
-import numpy as np
-import plotly.graph_objects as go
 import streamlit as st
 
 
@@ -17,66 +14,84 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.title("Módulo de Control Digital - Sebastián Enríquez")
+with st.sidebar:
+    st.header("Control Digital")
+    st.page_link("app.py", label="Página Central", icon="🏠", use_container_width=True)
+    st.page_link(
+        "pages/2_Calculadoras.py",
+        label="Calculadoras de la materia",
+        icon="🧮",
+        use_container_width=True,
+    )
+    st.page_link(
+        "pages/1_1_Modulo_1.py",
+        label="Módulo 1. Sistemas de control discretos",
+        icon="📦",
+        use_container_width=True,
+    )
+    st.page_link(
+        "pages/1_2_Modulo_2.py",
+        label="Módulo 2. Análisis de sistemas de control discreto",
+        icon="📦",
+        use_container_width=True,
+    )
+    st.page_link(
+        "pages/1_3_Modulo_3.py",
+        label="Módulo 3. Algoritmos de diseño y sintonización de controladores digitales",
+        icon="📦",
+        use_container_width=True,
+    )
 
-if st.button("⬅️ Página Central"):
-    st.switch_page("app.py")
-
-st.write(
-    "Espacio de trabajo para estudiar sistemas discretos, analizar su comportamiento "
-    "en frecuencia y evaluar su estabilidad."
+st.title("Módulo de Control Digital")
+st.markdown(
+    """
+    En esta asignatura se estudia el análisis y diseño de sistemas de control
+    discretos: desde la representación mediante transformada Z y el análisis de
+    estabilidad, hasta el diseño y sintonización de controladores digitales.
+    """
 )
 
-z_tab, frequency_tab, stability_tab = st.tabs(
-    [
-        "Transformada Z y Discretización",
-        "Respuesta en Frecuencia / Diagramas de Bode",
-        "Análisis de Estabilidad (Jury / Lugar de las Raíces)",
-    ]
-)
-
-with z_tab:
-    st.subheader("Respuesta al escalón de un sistema discreto")
+with st.container(border=True):
+    st.subheader("Herramientas para tus ejercicios")
     st.write(
-        "Ejemplo: sistema de primer orden "
-        r"$G(z) = \frac{0.2}{z - 0.8}$ con periodo de muestreo $T_s = 1$ s."
+        "Calcula y explora parámetros de sistemas de control digital con las "
+        "herramientas interactivas de la materia."
+    )
+    st.page_link(
+        "pages/2_Calculadoras.py",
+        label="Calculadoras de Control Digital",
+        icon="🧮",
+        use_container_width=True,
     )
 
-    system = control.TransferFunction([0.2], [1, -0.8], dt=1)
-    time, response = control.step_response(system)
-    response = np.asarray(response).squeeze()
+st.subheader("Selecciona un Módulo")
+module_columns = st.columns(3, gap="large")
+modules = [
+    (
+        "pages/1_1_Modulo_1.py",
+        "Módulo 1",
+        "Sistemas de control discretos",
+    ),
+    (
+        "pages/1_2_Modulo_2.py",
+        "Módulo 2",
+        "Análisis de sistemas de control discreto",
+    ),
+    (
+        "pages/1_3_Modulo_3.py",
+        "Módulo 3",
+        "Algoritmos de diseño y sintonización de controladores digitales",
+    ),
+]
 
-    figure = go.Figure()
-    figure.add_trace(
-        go.Scatter(
-            x=time,
-            y=response,
-            mode="lines+markers",
-            name="Respuesta al escalón",
-            line={"color": "#2463a6", "width": 3},
-            marker={"size": 7},
-        )
-    )
-    figure.update_layout(
-        title="Respuesta al escalón unitario",
-        xaxis_title="Tiempo (s)",
-        yaxis_title="Salida",
-        template="plotly_white",
-        margin={"l": 20, "r": 20, "t": 55, "b": 20},
-    )
-    st.plotly_chart(figure, use_container_width=True)
-    st.caption("Modelo discreto: G(z) = 0.2 / (z - 0.8), con Ts = 1 s.")
-
-with frequency_tab:
-    st.subheader("Respuesta en frecuencia")
-    st.info(
-        "Utiliza esta pestaña para explorar la respuesta en frecuencia y los "
-        "diagramas de Bode de sistemas discretos."
-    )
-
-with stability_tab:
-    st.subheader("Estabilidad de sistemas discretos")
-    st.info(
-        "Utiliza esta pestaña para analizar estabilidad mediante el criterio de "
-        "Jury y el lugar de las raíces."
-    )
+for column, (page, title, description) in zip(module_columns, modules):
+    with column:
+        with st.container(border=True):
+            st.markdown(f"### 📦 {title}")
+            st.write(description)
+            st.page_link(
+                page,
+                label=f"Abrir {title}",
+                icon="➡️",
+                use_container_width=True,
+            )
