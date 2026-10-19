@@ -1,16 +1,326 @@
 import base64
+from concurrent.futures import ThreadPoolExecutor
+import difflib
+import json
 import mimetypes
 from pathlib import Path
+import re
+from urllib.parse import urlencode
 import unicodedata
 
 import pandas as pd
+import requests
 import streamlit as st
 
 
 st.set_page_config(page_title="Recomendación Musical", layout="wide")
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+ITUNES_CACHE_PATH = PROJECT_ROOT / "data" / "itunes_cache.json"
 CATALOG_COLUMNS = ["Track name", "Artist name", "Album", "Genre_Group"]
 TOP_RECOMMENDATIONS_LIMIT = 10
+TOP_RECOMMENDATIONS = {
+    "Clásica": [
+        ("Schwanengesang, D. 957: IV. Ständchen", "Anne-Sophie Mutter & Daniil Trifonov"),
+        ("Gymnopédie No. 1", "Erik Satie"),
+        ("Clair de Lune", "Claude Debussy"),
+        ("Nocturne in E-Flat Major, Op. 9 No. 2", "Frédéric Chopin"),
+        ("Moonlight Sonata: I. Adagio sostenuto", "Ludwig van Beethoven"),
+        ("Canon in D", "Johann Pachelbel"),
+        ("Air on the G String", "Johann Sebastian Bach"),
+        ("The Four Seasons: Winter (L'Inverno)", "Antonio Vivaldi"),
+        ("Liebestraum No. 3 in A-Flat Major", "Franz Liszt"),
+        ("Cello Suite No. 1 in G Major: Prélude", "Johann Sebastian Bach"),
+        ("Prelude in C Major, BWV 846", "Johann Sebastian Bach"),
+        ("Swan Lake, Op. 20: Scene", "Pyotr Ilyich Tchaikovsky"),
+        ("Adagio for Strings, Op. 11", "Samuel Barber"),
+        ("Waltz in C-Sharp Minor, Op. 64 No. 2", "Frédéric Chopin"),
+        ("Arabesque No. 1", "Claude Debussy"),
+    ],
+    "Alternativa": [
+        ("No Surprises (Remastered)", "Radiohead"),
+        ("Fascination Street (Remastered)", "The Cure"),
+        ("Jigsaw Falling Into Place", "Radiohead"),
+        ("Elephant Woman", "Blonde Redhead"),
+        ("Nude", "Radiohead"),
+        ("Neon Pill", "Cage the Elephant"),
+        ("Misery Is a Butterfly", "Blonde Redhead"),
+        ("How Are You True", "Cage the Elephant"),
+        ("Dine N'Dash", "The Strokes"),
+        ("The Fruits of Conquest", "The Strokes"),
+        ("I Belong to You", "Muse"),
+        ("Champagne", "Declan McKenna"),
+        ("Float Into The Sky", "Cage the Elephant"),
+        ("The Key to Life on Earth", "Declan McKenna"),
+        ("7 Horses", "The Voidz"),
+    ],
+    "Indie": [
+        ("88", "Inner Wave"),
+        ("Ccbw", "Inner Wave"),
+        ("Diamond Eyes", "Inner Wave"),
+        ("Locket", "Crumb"),
+        ("Nina", "Crumb"),
+        ("Part III", "Crumb"),
+        ("Busted and Blue", "Gorillaz"),
+        ("Homage", "Mild High Club"),
+        ("Hold My Place in Heaven", "Saint Motel"),
+        ("Wait & See", "Saint Motel"),
+        ("Fine Wine", "Saint Motel"),
+        ("Tony Stark", "The Symposium"),
+        ("Paraphernalia", "Temples"),
+        ("Cicada", "Temples"),
+        ("Afterlife", "Temples"),
+    ],
+    "Experimental": [
+        ("Dream Sweet in Sea Major", "Miracle Musical"),
+        ("Introduction to the Snow", "Miracle Musical"),
+        ("White Ball", "Miracle Musical"),
+        ("Euthanasia", "Will Wood"),
+        ("Suburbia Overture", "Will Wood"),
+        ("The Song with Five Names", "Will Wood"),
+        ("Rule #34", "Fish in a Birdcage"),
+        ("Rule #5 - James Picard", "Fish in a Birdcage"),
+        ("Rule #4 - Fish in a Birdcage", "Fish in a Birdcage"),
+        ("Fate of the Stars", "Tally Hall"),
+        ("Choke", "I DONT KNOW HOW BUT THEY FOUND ME"),
+        ("楽園都市", "Masayoshi Oishi"),
+        ("Alien Days", "MGMT"),
+        ("Planets", "Everything Everything"),
+        ("Cough Cough", "Everything Everything"),
+    ],
+    "Rock": [
+        ("A Little Piece of Heaven", "Avenged Sevenfold"),
+        ("Afterlife", "Avenged Sevenfold"),
+        ("The Stage", "Avenged Sevenfold"),
+        ("God Damn", "Avenged Sevenfold"),
+        ("Acid Rain", "Avenged Sevenfold"),
+        ("Deutschland", "Rammstein"),
+        ("Sonne", "Rammstein"),
+        ("Du Hast", "Rammstein"),
+        ("2112: Overture", "Rush"),
+        ("Tom Sawyer", "Rush"),
+        ("A Passage To Bangkok", "Rush"),
+        ("Sadie's a Sadist", "The Buttertones"),
+        ("November", "Psychedelic Porn Crumpets"),
+        ("Corazon", "Mystic Braves"),
+        ("Like All Before You", "The Voidz"),
+    ],
+    "Pop": [
+        ("Instant Crush", "Daft Punk & Julian Casablancas"),
+        ("Instantané", "Paradis"),
+        ("Matahari", "L'Impératrice"),
+        ("Erreur 404", "L'Impératrice"),
+        ("Sonate Pacifique", "L'Impératrice"),
+        ("Hiéroglyphes", "Pépite"),
+        ("Parfait Tirage", "Paradis"),
+        ("Within", "Daft Punk"),
+        ("The Game of Love", "Daft Punk"),
+        ("Lisztomania", "Phoenix"),
+        ("Chamber Of Reflection", "Mac DeMarco"),
+        ("Just the Two of Us", "Grover Washington, Jr."),
+        ("Ruby", "Foster the People"),
+        ("Beleza Pula", "Masayoshi Takanaka"),
+        ("Bird In The Snare", "Israel's Arcade"),
+    ],
+}
+
+
+@st.cache_data(show_spinner=False)
+def load_itunes_cache(
+    cache_path: str,
+    modified_time_ns: int,
+) -> dict[tuple[str, str], dict[str, str]]:
+    path = Path(cache_path)
+    if not path.is_file():
+        return {}
+
+    try:
+        records = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"No se pudo leer el caché de iTunes: {error}") from error
+
+    if not isinstance(records, list):
+        raise ValueError("El caché de iTunes debe contener una lista de canciones.")
+
+    cache: dict[tuple[str, str], dict[str, str]] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            raise ValueError("El caché de iTunes contiene un registro inválido.")
+        title = record.get("title")
+        artist = record.get("artist")
+        if not isinstance(title, str) or not isinstance(artist, str):
+            raise ValueError("Un registro del caché no incluye título y artista válidos.")
+        cache[(title, artist)] = {
+            key: value
+            for key in ("artwork_url", "preview_url")
+            if isinstance((value := record.get(key)), str) and value
+        }
+
+    return cache
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_itunes_preview(
+    track: str,
+    artist: str,
+    cache_modified_time_ns: int,
+) -> dict[str, str] | None:
+    cached = load_itunes_cache(
+        str(ITUNES_CACHE_PATH),
+        cache_modified_time_ns,
+    ).get((track, artist), {})
+    if cached.get("artwork_url") and cached.get("preview_url"):
+        return {
+            "artwork_url": cached["artwork_url"],
+            "audio_url": cached["preview_url"],
+        }
+
+    def normalized(value: str) -> str:
+        return " ".join(
+            re.findall(
+                r"[^\W_]+",
+                normalize_text(value).replace("’", "'"),
+                flags=re.UNICODE,
+            )
+        )
+
+    target_track = normalized(track)
+    matches = []
+    lookup_error = None
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36"
+        )
+    }
+    for term in (f"{track} {artist}", track):
+        params = {
+            "term": term,
+            "media": "music",
+            "entity": "song",
+            "limit": 25,
+        }
+        try:
+            response = requests.get(
+                "https://itunes.apple.com/search",
+                params=params,
+                headers=headers,
+                timeout=5,
+            )
+            response.raise_for_status()
+            payload = response.json()
+        except (requests.RequestException, ValueError) as error:
+            lookup_error = error
+            continue
+
+        if not isinstance(payload, dict):
+            raise ValueError("iTunes devolvió una respuesta de búsqueda inválida.")
+        results = payload.get("results", [])
+        if not isinstance(results, list):
+            raise ValueError("iTunes devolvió una respuesta de búsqueda inválida.")
+
+        for result in results:
+            if not isinstance(result, dict):
+                continue
+            result_track = result.get("trackName")
+            if not isinstance(result_track, str):
+                continue
+            track_similarity = difflib.SequenceMatcher(
+                None,
+                target_track,
+                normalized(result_track),
+            ).ratio()
+            if track_similarity < 0.78:
+                continue
+            result_artist = result.get("artistName", "")
+            artist_similarity = difflib.SequenceMatcher(
+                None,
+                normalized(artist),
+                normalized(str(result_artist)),
+            ).ratio()
+            matches.append((track_similarity, artist_similarity, result))
+
+        if matches:
+            break
+
+    if not matches:
+        if lookup_error is not None and not cached:
+            raise RuntimeError(f"No se pudo consultar iTunes: {lookup_error}") from lookup_error
+        if cached:
+            return {
+                "artwork_url": cached.get("artwork_url", ""),
+                "audio_url": cached.get("preview_url", ""),
+            }
+        return None
+
+    result = max(matches, key=lambda match: (match[0], match[1]))[2]
+    artwork_url = result.get("artworkUrl100")
+    if isinstance(artwork_url, str):
+        artwork_url = re.sub(r"\d+x\d+bb(?=\.)", "1000x1000bb", artwork_url)
+    else:
+        artwork_url = ""
+    preview_url = result.get("previewUrl")
+    return {
+        "artwork_url": cached.get("artwork_url", artwork_url),
+        "audio_url": cached.get(
+            "preview_url",
+            preview_url if isinstance(preview_url, str) else "",
+        ),
+    }
+
+
+def render_genre_recommendations(
+    genre_name: str,
+    tracks: list[tuple[str, str]],
+) -> None:
+    st.markdown(
+        f'<div class="music-card"><h3>Top 15: {genre_name}</h3>'
+        "<p>Recomendaciones en orden de frecuencia de escucha.</p></div>",
+        unsafe_allow_html=True,
+    )
+
+    def load_preview(
+        item: tuple[str, str],
+    ) -> dict[str, str] | None | Exception:
+        try:
+            return get_itunes_preview(*item, cache_modified_time_ns)
+        except (RuntimeError, ValueError) as error:
+            return error
+
+    try:
+        cache_modified_time_ns = ITUNES_CACHE_PATH.stat().st_mtime_ns
+    except FileNotFoundError:
+        cache_modified_time_ns = 0
+
+    with st.spinner("Buscando portadas y muestras de audio..."):
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            previews = list(executor.map(load_preview, tracks))
+
+    for (track, artist), preview in zip(tracks, previews):
+        cover_column, details_column, audio_column, youtube_column = st.columns(
+            [1, 4, 4, 2],
+            vertical_alignment="center",
+        )
+        with cover_column:
+            if isinstance(preview, dict) and preview["artwork_url"]:
+                st.image(preview["artwork_url"], width=90)
+            else:
+                st.markdown('<div class="genre-icon">🎵</div>', unsafe_allow_html=True)
+        with details_column:
+            st.markdown(f"**{track}**  \n{artist}")
+        with audio_column:
+            if isinstance(preview, dict) and preview.get("audio_url"):
+                st.audio(preview["audio_url"], format="audio/mp4")
+            elif isinstance(preview, Exception):
+                st.caption(str(preview))
+            else:
+                st.caption("Muestra de audio no disponible en iTunes.")
+        with youtube_column:
+            youtube_url = "https://www.youtube.com/results?" + urlencode(
+                {"search_query": f"{track} {artist}"}
+            )
+            st.link_button("▶ YouTube", youtube_url, width="stretch")
+
 
 
 @st.cache_data
@@ -124,10 +434,9 @@ generos_config = [
         "grupo": "🎧 Pop, Variados & Otros",
     },
 ]
-project_root = Path(__file__).resolve().parent.parent
 genre_image_css = []
 for index, genre_config in enumerate(generos_config):
-    image_path = project_root / genre_config["img"]
+    image_path = PROJECT_ROOT / genre_config["img"]
     image_mime = mimetypes.guess_type(image_path.name)[0] or "image/png"
     image_data = base64.b64encode(image_path.read_bytes()).decode("ascii")
     image_selector = (
@@ -161,7 +470,8 @@ st.markdown(
         }
 
         [class*="st-key-music_filter_"] button,
-        [class*="st-key-genre_card_"] button {
+        [class*="st-key-genre_card_"] button,
+        [class*="st-key-btn_pagina_central"] button {
             display: flex !important;
             align-items: center !important;
             justify-content: flex-start !important;
@@ -198,7 +508,8 @@ st.markdown(
         }
 
         [class*="st-key-music_filter_"] button p,
-        [class*="st-key-genre_card_"] button p {
+        [class*="st-key-genre_card_"] button p,
+        [class*="st-key-btn_pagina_central"] button p {
             margin: 0 !important;
             color: #000000 !important;
             font-size: 16px !important;
@@ -206,7 +517,8 @@ st.markdown(
         }
 
         [class*="st-key-music_filter_"] button:hover,
-        [class*="st-key-genre_card_"] button:hover {
+        [class*="st-key-genre_card_"] button:hover,
+        [class*="st-key-btn_pagina_central"] button:hover {
             border-color: #000000 !important;
             background: #FFFFFF !important;
             color: #000000 !important;
@@ -215,7 +527,8 @@ st.markdown(
         }
 
         [class*="st-key-music_filter_"] button:hover p,
-        [class*="st-key-genre_card_"] button:hover p {
+        [class*="st-key-genre_card_"] button:hover p,
+        [class*="st-key-btn_pagina_central"] button:hover p {
             color: #000000 !important;
         }
 
@@ -337,11 +650,17 @@ with st.sidebar:
             on_click=select_music_genre,
             args=(genre["clave"],),
         )
+    st.markdown("---")
+    if st.button(
+        "🏠 Página Central",
+        key="btn_pagina_central",
+        use_container_width=True,
+    ):
+        st.switch_page("app.py")
 
-project_root = Path(__file__).resolve().parent.parent
 catalog_candidates = [
-    project_root / "data" / "curated_music.csv",
-    project_root / "curated_music.csv",
+    PROJECT_ROOT / "data" / "curated_music.csv",
+    PROJECT_ROOT / "curated_music.csv",
 ]
 csv_path = next(
     (candidate for candidate in catalog_candidates if candidate.is_file()),
@@ -358,7 +677,7 @@ try:
 except FileNotFoundError:
     st.error(
         "No se encontró **curated_music.csv**. Colócalo en "
-        f"`{catalog_candidates[0].parent}` o en `{project_root}`."
+        f"`{catalog_candidates[0].parent}` o en `{PROJECT_ROOT}`."
     )
 except (OSError, UnicodeDecodeError, pd.errors.ParserError, ValueError) as error:
     st.error(f"No se pudo cargar el catálogo musical: {error}")
@@ -381,27 +700,22 @@ with recommendation_tab:
                     args=(genre["clave"],),
                 )
 
-    if music_catalog is None:
-        st.info("Agrega curated_music.csv para ver las recomendaciones.")
+    selected_genre = st.session_state.music_genre_filter
+    if selected_genre is None:
+        st.info("Seleccione un genero para ver las recomendaciones")
     else:
-        selected_genre = st.session_state.music_genre_filter
-        if selected_genre is None:
-            st.info("Seleccione un genero para ver las recomendaciones")
+        selected_config = next(
+            genre for genre in generos_config
+            if genre["clave"] == selected_genre
+        )
+        recommended_tracks = TOP_RECOMMENDATIONS.get(selected_genre)
+        if recommended_tracks is None:
+            st.error(f"No hay una curaduría Top 15 configurada para {selected_genre}.")
         else:
-            selected_config = next(
-                genre for genre in generos_config
-                if genre["clave"] == selected_genre
+            render_genre_recommendations(
+                selected_config["nombre"],
+                recommended_tracks,
             )
-            visible_library = music_catalog[
-                music_catalog["Genre_Group"] == selected_config["grupo"]
-            ]
-            if visible_library.empty:
-                st.info(f"No hay canciones en la categoría {selected_config['nombre']}.")
-            else:
-                render_top_recommendations(
-                    selected_config["nombre"],
-                    visible_library,
-                )
 
 with artist_tab:
     if music_catalog is None:
@@ -491,6 +805,3 @@ with artist_tab:
                 filtered_library["Artist name"] == selected_artist
             ]
             render_top_recommendations(selected_artist, artist_tracks)
-
-if st.button("⬅️ Página Central", type="primary"):
-    st.switch_page("app.py")
