@@ -102,6 +102,7 @@ else:
             "📐 2. Función de Transferencia G(z)",
             "🎛️ 3. Control Proporcional y Estabilidad",
             "📝 4. Conclusiones y Rúbrica",
+            "📚 5. Referencias y Honestidad Académica",
         ]
     )
 
@@ -571,4 +572,55 @@ else:
         st.caption(
             "Marca cada criterio solo cuando esté sustentado por cálculos y "
             "evidencias verificables en tu entrega."
+        )
+
+    with tabs[4]:
+        st.markdown("### Declaración de honestidad académica y uso ético de IA")
+        st.info(
+            """
+            Yo, **Sebastián Enríquez Ramos**, certifico que soy el autor de este
+            trabajo y que asumo la responsabilidad por su contenido.
+
+            Utilicé herramientas de Inteligencia Artificial como asistencia
+            técnica para la generación y refactorización de código en
+            **Python/Streamlit**, el estilizado **CSS** de la interfaz visual,
+            la corrección ortográfica y sintáctica del informe, y la optimización
+            del desarrollo matemático.
+
+            La interpretación teórica, la selección del modelo y la validación
+            de los resultados de Control Digital fueron analizadas y comprendidas
+            en su totalidad por mí. Las herramientas de IA no sustituyen mi
+            criterio académico ni la verificación de los resultados presentados.
+            """
+        )
+
+        st.markdown("### Referencias bibliográficas y de software")
+        st.markdown(
+            """
+            **Libros de texto de Control Digital**
+
+            1. Ogata, K. (1995). *Discrete-Time Control Systems* (2nd ed.).
+               Prentice Hall.
+            2. Kuo, B. C. (2003). *Digital Control Systems* (2nd ed.).
+               Oxford University Press.
+
+            **Herramientas de Inteligencia Artificial**
+
+            3. OpenAI, Google Gemini y GitHub Copilot. (2026). *Asistencia en
+               código Python, depuración y redacción técnica*.
+
+            **Librerías y entornos de software**
+
+            4. Streamlit Development Team. (2026). *Streamlit: The fastest way
+               to build and share data apps*. https://streamlit.io
+            5. Virtanen, P., et al. (2020). SciPy 1.0: Fundamental Algorithms
+               for Scientific Computing in Python. *Nature Methods, 17*(3),
+               261–272.
+            6. Hunter, J. D. (2007). Matplotlib: A 2D graphics environment.
+               *Computing in Science & Engineering, 9*(3), 90–95.
+            """
+        )
+        st.success(
+            "Las fuentes y herramientas utilizadas se declaran para reconocer "
+            "sus aportes y facilitar la verificación del trabajo."
         )
