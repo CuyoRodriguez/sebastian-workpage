@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 import streamlit as st
+from scipy import signal
 
 
 st.set_page_config(page_title="Módulo 2 - Control Digital", layout="wide")
@@ -232,48 +233,127 @@ else:
 
     with tabs[1]:
         st.markdown(
-            r"""
-            Aplicando la transformada Z con condiciones iniciales nulas, la
-            función de transferencia se obtiene a partir de la estructura
-            seleccionada y de los coeficientes estimados.
-            """
+            "Se aplica la transformada Z con condiciones iniciales nulas y se "
+            "despeja $G(z)=Y(z)/X(z)$, omitiendo el término de ruido $E(z)$ "
+            "para la función de transferencia."
         )
         if model_coefficients is None:
             st.warning("Corrige los datos en la primera pestaña para estimar G(z).")
         elif model_order == 1:
             estimated_i, estimated_j = model_coefficients
-            poles = np.array([estimated_i])
             st.latex(
-                rf"\hat{{G}}(z)=\frac{{\hat{{j}}z}}{{z-\hat{{i}}}}"
-                rf"=\frac{{{estimated_j:.6g}z}}{{z-({estimated_i:.6g})}}"
+                r'''
+                \begin{aligned}
+                y[n] &= i\,y[n-1] + j\,x[n] + e[n] \\
+                Y(z) &= i z^{-1}Y(z) + jX(z) + E(z) \\
+                Y(z)\left(1-i z^{-1}\right) &= jX(z) + E(z) \\
+                G(z) = \frac{Y(z)}{X(z)}
+                     &= \frac{j}{1-i z^{-1}}
+                      = \frac{j \cdot z}{z-i}
+                \end{aligned}
+                '''
             )
-            stability_text = (
-                "estable" if abs(estimated_i) < 1 else "inestable o marginal"
+            st.latex(r'G(z) = \frac{j \cdot z}{z - i}')
+            st.latex(
+                rf"\hat{{G}}(z)=\frac{{{estimated_j:.6g}\,z}}"
+                rf"{{z-({estimated_i:.6g})}}"
             )
+            poles = np.array([estimated_i])
+            zeros = np.array([0.0])
+            step_numerator = [estimated_j]
+            step_denominator = [1, -estimated_i]
+            step_delay = 0
             st.markdown(
-                f"- **Polo estimado:** $z={estimated_i:.6g}$."
-                f"\n- **Estabilidad sin controlar:** {stability_text}."
+                f"- **Polo de lazo abierto:** $z={estimated_i:.6g}$ "
+                f"($|z|={abs(estimated_i):.6g}$)."
+                "\n- **Cero de lazo abierto:** $z=0$."
             )
         else:
             estimated_i1, estimated_i2, estimated_j1, estimated_j2 = model_coefficients
-            poles = np.roots([1, -estimated_i1, -estimated_i2])
             st.latex(
-                rf"\hat{{G}}(z)=\frac{{\hat{{j}}_1z+\hat{{j}}_2}}"
-                rf"{{z^2-\hat{{i}}_1z-\hat{{i}}_2}}"
-                rf"=\frac{{{estimated_j1:.6g}z+({estimated_j2:.6g})}}"
+                r'''
+                \begin{aligned}
+                y[n] &= i_1y[n-1]+i_2y[n-2]
+                       +j_1x[n-1]+j_2x[n-2]+e[n] \\
+                Y(z) &= i_1z^{-1}Y(z)+i_2z^{-2}Y(z)
+                       +j_1z^{-1}X(z)+j_2z^{-2}X(z)+E(z) \\
+                Y(z)\left(1-i_1z^{-1}-i_2z^{-2}\right)
+                     &= X(z)\left(j_1z^{-1}+j_2z^{-2}\right)+E(z) \\
+                G(z) = \frac{Y(z)}{X(z)}
+                     &= \frac{j_1z^{-1}+j_2z^{-2}}
+                              {1-i_1z^{-1}-i_2z^{-2}} \\
+                     &= \frac{j_1 z+j_2}{z^2-i_1z-i_2}
+                \end{aligned}
+                '''
+            )
+            st.latex(
+                r'G(z) = \frac{j_1 z + j_2}{z^2 - i_1 z - i_2}'
+            )
+            st.latex(
+                rf"\hat{{G}}(z)=\frac{{({estimated_j1:.6g})z+({estimated_j2:.6g})}}"
                 rf"{{z^2-({estimated_i1:.6g})z-({estimated_i2:.6g})}}"
             )
-            pole_values = ", ".join(f"{pole:.5g}" for pole in poles)
-            st.markdown(
-                f"- **Polos estimados:** $z={pole_values}$."
-                f"\n- **Cero estimado:** $z={-estimated_j2 / estimated_j1:.6g}$."
+            poles = np.roots([1, -estimated_i1, -estimated_i2])
+            zeros = (
+                np.roots([estimated_j1, estimated_j2])
                 if not np.isclose(estimated_j1, 0)
-                else f"- **Polos estimados:** $z={pole_values}$."
+                else np.array([])
             )
+            step_numerator = [estimated_j1, estimated_j2]
+            step_denominator = [1, -estimated_i1, -estimated_i2]
+            step_delay = 1
+            pole_values = ", ".join(f"{pole:.5g}" for pole in poles)
+            zero_values = (
+                ", ".join(f"{zero:.5g}" for zero in zeros)
+                if zeros.size
+                else "sin ceros finitos"
+            )
+            st.markdown(
+                f"- **Polos de lazo abierto:** $z={pole_values}$."
+                f"\n- **Ceros de lazo abierto:** $z={zero_values}$."
+            )
+
         st.caption(
-            "El modelo representa el conjunto sintético de 15 semestres y "
-            "su orden depende de la estructura seleccionada."
+            "Las raíces se obtienen del denominador (polos) y numerador (ceros) "
+            "de la función estimada."
         )
+        try:
+            step_time, step_response = signal.dstep(
+                (step_numerator, step_denominator, 1),
+                n=30 - step_delay,
+            )
+        except (ValueError, np.linalg.LinAlgError) as error:
+            st.error(f"No fue posible calcular la respuesta al escalón: {error}")
+        else:
+            step_values = np.asarray(step_response[0]).reshape(-1)
+            step_samples = np.asarray(step_time).reshape(-1)
+            if step_delay:
+                step_values = np.concatenate((np.zeros(step_delay), step_values))
+                step_samples = np.concatenate(
+                    (np.arange(step_delay), step_samples + step_delay)
+                )
+            step_figure, step_axis = plt.subplots(figsize=(9, 4.5))
+            markerline, stemlines, baseline = step_axis.stem(
+                step_samples,
+                step_values,
+                linefmt="#2463a6",
+                markerfmt="o",
+                basefmt="k-",
+                label="Respuesta al escalón",
+            )
+            plt.setp(markerline, markersize=5, markerfacecolor="#2463a6")
+            plt.setp(stemlines, linewidth=1.5, alpha=0.8)
+            plt.setp(baseline, linewidth=0.8, alpha=0.6)
+            step_axis.set(
+                title="Respuesta al escalón discreto",
+                xlabel="Muestra n",
+                ylabel="Salida",
+            )
+            step_axis.grid(True, alpha=0.3)
+            step_axis.legend()
+            step_figure.tight_layout()
+            st.pyplot(step_figure)
+            plt.close(step_figure)
 
     with tabs[2]:
         st.markdown(
