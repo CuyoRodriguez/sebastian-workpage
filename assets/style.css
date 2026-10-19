@@ -285,3 +285,11 @@ button[aria-controls="stSidebar"][aria-expanded="false"]::after {
     transition: none !important;
   }
 }
+
+
+/* Reliable centered sidebar chevron override */
+button[aria-controls="stSidebar"] { position: relative !important; }
+button[aria-controls="stSidebar"] span { visibility: hidden !important; }
+button[aria-controls="stSidebar"]::after { content: "" !important; display: block !important; position: absolute !important; left: 50% !important; top: 50% !important; width: 0.55rem !important; height: 0.55rem !important; border-right: 2px solid #0f172a !important; border-bottom: 2px solid #0f172a !important; pointer-events: none !important; }
+button[aria-controls="stSidebar"][aria-expanded="true"]::after { transform: translate(-35%, -50%) rotate(135deg) !important; }
+button[aria-controls="stSidebar"][aria-expanded="false"]::after { transform: translate(-65%, -50%) rotate(-45deg) !important; }
