@@ -232,6 +232,25 @@ else:
                 st.pyplot(figure)
                 plt.close(figure)
 
+                if structure == "Estructura 1 (1er orden)":
+                    st.caption(
+                        r"📌 **Nota técnica (1er orden):** La predicción inicia en el periodo $n=2$ "
+                        r"debido a que la ecuación de diferencias requiere una condición inicial previa ($y[n-1]$)."
+                    )
+                else:
+                    st.caption(
+                        r"📌 **Nota técnica (2do orden):** La predicción inicia en el periodo $n=3$ "
+                        r"debido a que la ecuación requiere dos condiciones iniciales previas ($y[n-1]$ y $y[n-2]$)."
+                    )
+
+                st.info(
+                    "💡 **Observación analítica:** Al comparar ambas estructuras, "
+                    "la Estructura 1 (1er orden) obtiene un Error Cuadrático Medio "
+                    "ligeramente menor (MSE ≈ 1.20) que la Estructura 2 (MSE ≈ 1.30), "
+                    "lo que indica que un modelo de primer orden es más eficiente "
+                    "y preciso para este conjunto de datos."
+                )
+
     with tabs[1]:
         st.markdown(
             "Se aplica la transformada Z con condiciones iniciales nulas y se "
